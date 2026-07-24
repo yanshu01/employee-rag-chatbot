@@ -28,7 +28,7 @@ def login_employee(
     password: str,
 ) -> tuple[bool, str]:
     try:
-        response = requests.post(
+        login_response = requests.post(
             f"{API_BASE_URL}/api/auth/login",
             json={
                 "email": email,
@@ -37,27 +37,27 @@ def login_employee(
             timeout=30,
         )
 
-        if response.status_code != 200:
+        if login_response.status_code != 200:
             try:
-                error_message = response.json().get(
+                error_message = login_response.json().get(
                     "detail",
-                    "Login failed.",
+                    "Invalid email or password.",
                 )
             except ValueError:
                 error_message = "Login failed."
 
             return False, error_message
 
-        data = response.json()
-
-        access_token = data.get("access_token")
+        login_data = login_response.json()
+        access_token = login_data.get("access_token")
 
         if not access_token:
-            return False, "Access token was not returned."
+            return (
+                False,
+                "The backend did not return an access token.",
+            )
 
-        st.session_state.access_token = access_token
-
-        employee_response = requests.get(
+        profile_response = requests.get(
             f"{API_BASE_URL}/api/auth/me",
             headers={
                 "Authorization": (
@@ -67,16 +67,24 @@ def login_employee(
             timeout=30,
         )
 
-        if employee_response.status_code == 200:
-            st.session_state.employee = (
-                employee_response.json()
-            )
-        else:
-            st.session_state.employee = {
-                "name": email,
-                "email": email,
-                "role": "employee",
-            }
+        if profile_response.status_code != 200:
+            try:
+                error_message = profile_response.json().get(
+                    "detail",
+                    "Unable to load employee profile.",
+                )
+            except ValueError:
+                error_message = (
+                    "Unable to load employee profile."
+                )
+
+            return False, error_message
+
+        employee = profile_response.json()
+
+        st.session_state.access_token = access_token
+        st.session_state.employee = employee
+        st.session_state.messages = []
 
         return True, "Login successful."
 
@@ -84,14 +92,14 @@ def login_employee(
         return (
             False,
             "Cannot connect to FastAPI. "
-            "Make sure the backend is running.",
+            "Start the backend and try again.",
         )
 
     except requests.exceptions.Timeout:
         return False, "The login request timed out."
 
     except requests.exceptions.RequestException as exc:
-        return False, f"Request failed: {exc}"
+        return False, f"Login request failed: {exc}"
 
 
 def send_chat_message(
@@ -120,6 +128,7 @@ def send_chat_message(
         if response.status_code == 401:
             st.session_state.access_token = None
             st.session_state.employee = None
+            st.session_state.messages = []
 
             return (
                 False,
@@ -151,7 +160,7 @@ def send_chat_message(
         return False, "The chatbot request timed out."
 
     except requests.exceptions.RequestException as exc:
-        return False, f"Request failed: {exc}"
+        return False, f"Chat request failed: {exc}"
 
 
 def logout_employee() -> None:
@@ -186,7 +195,9 @@ def show_login_page() -> None:
         )
 
     if submit_button:
-        if not email.strip() or not password:
+        clean_email = email.strip()
+
+        if not clean_email or not password:
             st.warning(
                 "Please enter your email and password."
             )
@@ -194,15 +205,15 @@ def show_login_page() -> None:
 
         with st.spinner("Logging in..."):
             success, message = login_employee(
-                email=email.strip(),
+                email=clean_email,
                 password=password,
             )
 
         if success:
             st.success(message)
             st.rerun()
-        else:
-            st.error(message)
+
+        st.error(message)
 
 
 def show_sidebar() -> None:
@@ -221,9 +232,13 @@ def show_sidebar() -> None:
             f"{employee.get('email', 'Unknown')}"
         )
 
+        role = employee.get(
+            "role",
+            "employee",
+        )
+
         st.write(
-            f"**Role:** "
-            f"{employee.get('role', 'employee').title()}"
+            f"**Role:** {str(role).title()}"
         )
 
         employee_code = employee.get("employee_code")
@@ -257,7 +272,9 @@ def show_sidebar() -> None:
             st.rerun()
 
 
-def display_sources(sources: list[dict]) -> None:
+def display_sources(
+    sources: list[dict],
+) -> None:
     if not sources:
         return
 
@@ -299,16 +316,23 @@ def show_chat_page() -> None:
             "Example questions:\n\n"
             "- How many casual leaves are allowed?\n"
             "- What are the company working hours?\n"
-            "- What is the late arrival policy?\n"
+            "- What is my shift?\n"
+            "- What is my attendance today?\n"
             "- Can employees work from home?"
         )
 
     for message in st.session_state.messages:
-        role = message.get("role", "assistant")
+        role = message.get(
+            "role",
+            "assistant",
+        )
 
         with st.chat_message(role):
             st.markdown(
-                message.get("content", "")
+                message.get(
+                    "content",
+                    "",
+                )
             )
 
             if role == "assistant":
@@ -320,7 +344,10 @@ def show_chat_page() -> None:
                     )
 
                 display_sources(
-                    message.get("sources", [])
+                    message.get(
+                        "sources",
+                        [],
+                    )
                 )
 
     question = st.chat_input(
@@ -330,24 +357,50 @@ def show_chat_page() -> None:
     if not question:
         return
 
+    clean_question = question.strip()
+
+    if not clean_question:
+        return
+
     st.session_state.messages.append(
         {
             "role": "user",
-            "content": question,
+            "content": clean_question,
         }
     )
 
     with st.chat_message("user"):
-        st.markdown(question)
+        st.markdown(clean_question)
 
     with st.chat_message("assistant"):
-        with st.spinner("Searching company information..."):
+        with st.spinner(
+            "Searching company information..."
+        ):
             success, result = send_chat_message(
-                question=question,
+                question=clean_question,
             )
 
         if not success:
             error_message = str(result)
+
+            st.error(error_message)
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": error_message,
+                    "intent": "error",
+                    "sources": [],
+                }
+            )
+
+            return
+
+        if not isinstance(result, dict):
+            error_message = (
+                "The backend returned an invalid response."
+            )
+
             st.error(error_message)
 
             st.session_state.messages.append(
@@ -378,6 +431,7 @@ def show_chat_page() -> None:
 
         st.markdown(answer)
         st.caption(f"Intent: {intent}")
+
         display_sources(sources)
 
         st.session_state.messages.append(
