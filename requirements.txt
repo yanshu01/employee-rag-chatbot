@@ -29,3 +29,5 @@ langchain-huggingface
 chromadb
 sentence-transformers
 pypdf
+pwdlib[argon2]
+argon2-cffi
