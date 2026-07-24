@@ -31,3 +31,4 @@ sentence-transformers
 pypdf
 pwdlib[argon2]
 argon2-cffi
+PyJWT==2.10.1
