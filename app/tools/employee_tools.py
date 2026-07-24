@@ -1,12 +1,11 @@
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.database.models import Employee
 from app.database.queries import (
-    get_attendance_for_date,
+    get_employee_leave_balance,
     get_employee_shift,
-    get_leave_balance_by_employee_id,
 )
 
 
@@ -14,12 +13,12 @@ def get_my_leave_balance(
     db: Session,
     current_employee: Employee,
 ) -> dict:
-    leave_balance = get_leave_balance_by_employee_id(
+    leave_balance = get_employee_leave_balance(
         db=db,
-        employee_id=current_employee.id,
+        employee_code=current_employee.employee_code,
     )
 
-    if not leave_balance:
+    if leave_balance is None:
         return {
             "success": False,
             "message": (
@@ -28,80 +27,15 @@ def get_my_leave_balance(
             ),
         }
 
-    casual_remaining = max(
-        leave_balance.casual_total
-        - leave_balance.casual_used,
-        0,
-    )
-
-    sick_remaining = max(
-        leave_balance.sick_total
-        - leave_balance.sick_used,
-        0,
-    )
-
-    earned_remaining = max(
-        leave_balance.earned_total
-        - leave_balance.earned_used,
-        0,
-    )
-
     return {
         "success": True,
         "employee_name": current_employee.name,
-        "casual": {
-            "total": leave_balance.casual_total,
-            "used": leave_balance.casual_used,
-            "remaining": casual_remaining,
-        },
-        "sick": {
-            "total": leave_balance.sick_total,
-            "used": leave_balance.sick_used,
-            "remaining": sick_remaining,
-        },
-        "earned": {
-            "total": leave_balance.earned_total,
-            "used": leave_balance.earned_used,
-            "remaining": earned_remaining,
-        },
-    }
-
-
-def get_my_attendance(
-    db: Session,
-    current_employee: Employee,
-) -> dict:
-    attendance = get_attendance_for_date(
-        db=db,
-        employee_id=current_employee.id,
-        attendance_date=date.today(),
-    )
-
-    if not attendance:
-        return {
-            "success": False,
-            "message": (
-                "No attendance record was found "
-                "for today."
-            ),
-        }
-
-    return {
-        "success": True,
-        "employee_name": current_employee.name,
-        "date": attendance.attendance_date.isoformat(),
-        "status": attendance.status,
-        "check_in": (
-            attendance.check_in.isoformat()
-            if attendance.check_in
-            else None
+        "employee_code": current_employee.employee_code,
+        "leave_balance": leave_balance,
+        "message": (
+            f"You have {leave_balance} leave days "
+            "remaining."
         ),
-        "check_out": (
-            attendance.check_out.isoformat()
-            if attendance.check_out
-            else None
-        ),
-        "worked_hours": attendance.worked_hours,
     }
 
 
@@ -111,7 +45,7 @@ def get_my_shift(
 ) -> dict:
     shift = get_employee_shift(
         db=db,
-        employee_id=current_employee.id,
+        employee_code=current_employee.employee_code,
     )
 
     if not shift:
@@ -123,17 +57,44 @@ def get_my_shift(
             ),
         }
 
+    shift_start = shift.get("shift_start")
+    shift_end = shift.get("shift_end")
+
+    if shift_start is None or shift_end is None:
+        return {
+            "success": False,
+            "message": (
+                "Your shift timing is not configured."
+            ),
+        }
+
+    start_time = shift_start.strftime("%I:%M %p")
+    end_time = shift_end.strftime("%I:%M %p")
+
     return {
         "success": True,
         "employee_name": current_employee.name,
-        "shift_name": shift.shift_name,
-        "start_time": shift.start_time.strftime(
-            "%I:%M %p"
+        "employee_code": current_employee.employee_code,
+        "start_time": start_time,
+        "end_time": end_time,
+        "message": (
+            f"Your shift is from {start_time} "
+            f"to {end_time}."
         ),
-        "end_time": shift.end_time.strftime(
-            "%I:%M %p"
+    }
+
+
+def get_my_attendance(
+    db: Session,
+    current_employee: Employee,
+) -> dict:
+    return {
+        "success": False,
+        "employee_name": current_employee.name,
+        "message": (
+            "Attendance data is not available in "
+            "the current dummy database."
         ),
-        "required_hours": shift.required_hours,
     }
 
 
@@ -143,43 +104,76 @@ def get_my_remaining_shift_hours(
 ) -> dict:
     shift = get_employee_shift(
         db=db,
-        employee_id=current_employee.id,
-    )
-
-    attendance = get_attendance_for_date(
-        db=db,
-        employee_id=current_employee.id,
-        attendance_date=date.today(),
+        employee_code=current_employee.employee_code,
     )
 
     if not shift:
         return {
             "success": False,
-            "message": "No shift record was found.",
-        }
-
-    if not attendance:
-        return {
-            "success": False,
             "message": (
-                "No attendance record was found "
-                "for today."
+                "No shift record was found "
+                "for your account."
             ),
         }
 
-    remaining_hours = max(
-        shift.required_hours
-        - attendance.worked_hours,
-        0,
+    shift_start = shift.get("shift_start")
+    shift_end = shift.get("shift_end")
+
+    if shift_start is None or shift_end is None:
+        return {
+            "success": False,
+            "message": (
+                "Your shift timing is not configured."
+            ),
+        }
+
+    now = datetime.now()
+    current_time = now.time()
+
+    start_datetime = datetime.combine(
+        now.date(),
+        shift_start,
     )
+    end_datetime = datetime.combine(
+        now.date(),
+        shift_end,
+    )
+    current_datetime = datetime.combine(
+        now.date(),
+        current_time,
+    )
+
+    total_shift_hours = (
+        end_datetime - start_datetime
+    ).total_seconds() / 3600
+
+    if current_datetime <= start_datetime:
+        remaining_hours = total_shift_hours
+        status = "Shift has not started yet."
+
+    elif current_datetime >= end_datetime:
+        remaining_hours = 0
+        status = "Shift has ended."
+
+    else:
+        remaining_hours = (
+            end_datetime - current_datetime
+        ).total_seconds() / 3600
+
+        status = "Shift is currently active."
 
     return {
         "success": True,
         "employee_name": current_employee.name,
-        "required_hours": shift.required_hours,
-        "worked_hours": attendance.worked_hours,
+        "shift_start": shift_start.strftime(
+            "%I:%M %p"
+        ),
+        "shift_end": shift_end.strftime(
+            "%I:%M %p"
+        ),
         "remaining_hours": round(
             remaining_hours,
             2,
         ),
+        "status": status,
     }

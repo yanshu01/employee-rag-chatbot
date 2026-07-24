@@ -89,13 +89,8 @@ class EmployeeChatWorkflow:
             if not result["success"]:
                 answer = result["message"]
             else:
-                answer = (
-                    f"You have "
-                    f"{result['casual']['remaining']} casual, "
-                    f"{result['sick']['remaining']} sick, and "
-                    f"{result['earned']['remaining']} earned "
-                    f"leaves remaining."
-                )
+                answer = result["message"]
+                
 
             return {
                 "answer": answer,
@@ -142,17 +137,7 @@ class EmployeeChatWorkflow:
                 current_employee=current_employee,
             )
 
-            if not result["success"]:
-                answer = result["message"]
-            else:
-                answer = (
-                    f"Your assigned shift is "
-                    f"{result['shift_name']}, from "
-                    f"{result['start_time']} to "
-                    f"{result['end_time']}. "
-                    f"Required working hours: "
-                    f"{result['required_hours']}."
-                )
+            answer = result["message"]
 
             return {
                 "answer": answer,

@@ -1,7 +1,12 @@
 from collections.abc import Generator
+from typing import Any
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import URL, create_engine
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Session,
+    sessionmaker,
+)
 
 from app.config import settings
 
@@ -10,17 +15,31 @@ class Base(DeclarativeBase):
     pass
 
 
-connect_args = {}
+database_url = URL.create(
+    drivername="mysql+pymysql",
+    username=settings.db_user,
+    password=settings.db_password,
+    host=settings.db_host,
+    port=settings.db_port,
+    database=settings.db_name,
+    query={"charset": "utf8mb4"},
+)
 
-if settings.database_url.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+
+engine_options: dict[str, Any] = {
+    "echo": False,
+    "pool_pre_ping": True,
+    "pool_recycle": 1800,
+    "pool_size": 5,
+    "max_overflow": 10,
+}
 
 
 engine = create_engine(
-    settings.database_url,
-    connect_args=connect_args,
-    echo=False,
+    database_url,
+    **engine_options,
 )
+
 
 SessionLocal = sessionmaker(
     bind=engine,

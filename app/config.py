@@ -1,14 +1,20 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic_settings import (
-    BaseSettings,
-    SettingsConfigDict,
-)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
     app_name: str = "Employee RAG Chatbot"
-    database_url: str = "sqlite:///./employee_chatbot.db"
+
+    db_host: str
+    db_port: int = 3306
+    db_name: str
+    db_user: str
+    db_password: str
 
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
@@ -18,14 +24,14 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
 
 @lru_cache
-def get_settings() -> Settings:
+def get_settings():
     return Settings()
 
 

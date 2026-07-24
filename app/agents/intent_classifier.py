@@ -188,16 +188,16 @@ ATTENDANCE_KEYWORDS = {
 
 SHIFT_KEYWORDS = {
     "my shift",
+    "what is my shift",
+    "what's my shift",
     "shift timing",
-    "shift timings",
-    "shift time",
-    "shift hours",
-    "working shift",
-    "start shift",
-    "end shift",
+    "my shift timing",
+    "work shift",
+    "working hours",
+    "office timing",
+    "office hours",
     "when does my shift start",
     "when does my shift end",
-    "what is my shift",
 }
 
 
