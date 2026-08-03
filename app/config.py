@@ -10,17 +10,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     app_name: str = "Employee RAG Chatbot"
 
-    db_host: str
+    db_host: str = "sqlite"
     db_port: int = 3306
-    db_name: str
-    db_user: str
-    db_password: str
+    db_name: str = "employee_chatbot.db"
+    db_user: str = "root"
+    db_password: str = "password"
 
-    jwt_secret_key: str
+    jwt_secret_key: str = "supersecretjwtkey1234567890_employee_rag"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
-    groq_api_key: str
+    groq_api_key: str = "gsk_dummy_groq_api_key"
     groq_model: str = "openai/gpt-oss-120b"
 
     model_config = SettingsConfigDict(

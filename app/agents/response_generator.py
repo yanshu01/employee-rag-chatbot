@@ -47,16 +47,22 @@ Retrieved company policy context:
 Provide a direct answer based only on this context.
 """.strip()
 
-        response = self.llm.invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
-        )
+        try:
+            response = self.llm.invoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            )
 
-        answer = response.content
+            answer = response.content
 
-        if isinstance(answer, str):
-            return answer.strip()
+            if isinstance(answer, str):
+                return answer.strip()
 
-        return str(answer).strip()
+            return str(answer).strip()
+        except Exception as exc:
+            print(f"LLM generation warning ({exc}): Returning retrieved policy context directly.")
+            return (
+                f"Based on company policy documents:\n\n{policy_context}"
+            )
