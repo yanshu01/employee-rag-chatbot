@@ -15,25 +15,29 @@ class Base(DeclarativeBase):
     pass
 
 
-database_url = URL.create(
-    drivername="mysql+pymysql",
-    username=settings.db_user,
-    password=settings.db_password,
-    host=settings.db_host,
-    port=settings.db_port,
-    database=settings.db_name,
-    query={"charset": "utf8mb4"},
-)
-
-
-engine_options: dict[str, Any] = {
-    "echo": False,
-    "pool_pre_ping": True,
-    "pool_recycle": 1800,
-    "pool_size": 5,
-    "max_overflow": 10,
-}
-
+if settings.db_host == "sqlite" or settings.db_name.endswith(".db"):
+    database_url = f"sqlite:///{settings.db_name}"
+    engine_options: dict[str, Any] = {
+        "echo": False,
+        "connect_args": {"check_same_thread": False},
+    }
+else:
+    database_url = URL.create(
+        drivername="mysql+pymysql",
+        username=settings.db_user,
+        password=settings.db_password,
+        host=settings.db_host,
+        port=settings.db_port,
+        database=settings.db_name,
+        query={"charset": "utf8mb4"},
+    )
+    engine_options: dict[str, Any] = {
+        "echo": False,
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+        "pool_size": 5,
+        "max_overflow": 10,
+    }
 
 engine = create_engine(
     database_url,

@@ -9,6 +9,10 @@ __pycache__/
 *.sqlite3
 *.db
 
+# Node
+node_modules/
+dist/
+
 # Virtual environment
 venv/
 .venv/
