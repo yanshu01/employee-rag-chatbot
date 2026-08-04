@@ -21,6 +21,7 @@ class IntentType(str, Enum):
     )
     TEAM_SHIFT = "team_shift"
 
+    DATABASE_QUERY = "database_query"
     UNAUTHORIZED = "unauthorized"
     GENERAL = "general"
 
@@ -110,6 +111,7 @@ TEAM_WFH_KEYWORDS = {
 
 TEAM_LATE_KEYWORDS = {
     "who arrived late",
+    "who reported late today",
     "who is late",
     "late arrivals",
     "late employees in my team",
@@ -157,13 +159,9 @@ PERSONAL_LEAVE_KEYWORDS = {
     "leave remaining",
     "leaves left",
     "leaves remaining",
-    "casual leave",
     "casual leaves left",
-    "sick leave",
     "sick leaves left",
-    "earned leave",
     "earned leaves left",
-    "annual leave",
     "how many leaves do i have",
 }
 
@@ -175,12 +173,8 @@ ATTENDANCE_KEYWORDS = {
     "am i absent",
     "my check in",
     "my check-in",
-    "check in",
-    "check-in",
     "my check out",
     "my check-out",
-    "check out",
-    "check-out",
     "when did i check in",
     "when did i check out",
 }
@@ -193,7 +187,6 @@ SHIFT_KEYWORDS = {
     "shift timing",
     "my shift timing",
     "work shift",
-    "working hours",
     "office timing",
     "office hours",
     "when does my shift start",
@@ -215,9 +208,9 @@ POLICY_KEYWORDS = {
     "earned leave policy",
     "maternity",
     "paternity",
-    "work from home",
-    "wfh",
-    "remote work",
+    "work from home policy",
+    "wfh policy",
+    "remote work policy",
     "working hours policy",
     "late arrival policy",
     "lateness policy",
@@ -225,7 +218,62 @@ POLICY_KEYWORDS = {
     "probation",
     "code of conduct",
     "dress code",
-    "overtime",
+    "overtime policy",
+}
+
+
+DATABASE_KEYWORDS = {
+    "employee",
+    "employee code",
+    "profile",
+    "joining",
+    "joining date",
+    "join date",
+    "department",
+    "designation",
+    "position",
+    "phone",
+    "phone number",
+    "registered phone",
+    "email",
+    "project",
+    "projects",
+    "task",
+    "tasks",
+    "assigned",
+    "assigned task",
+    "assigned tasks",
+    "timesheet",
+    "timesheets",
+    "ticket",
+    "tickets",
+    "notification",
+    "notifications",
+    "announcement",
+    "referral",
+    "service",
+    "daily report",
+    "progress",
+    "priority",
+    "client",
+     "full name",
+        "my name",
+        "my role",
+        "account active",
+        "active account",
+        "who is my manager",
+        "reporting manager",
+        "casual leaves",
+        "pending leave",
+        "leave request",
+        "late today",
+        "was i late",
+        "when did i join",
+        "pending timesheet",
+"pending timesheets",
+"timesheet approval",
+"timesheet approvals",
+"pending timesheet approvals",
 }
 
 
@@ -242,96 +290,86 @@ def classify_intent(
     ):
         return IntentType.UNAUTHORIZED
 
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_MISSING_CHECKOUT_KEYWORDS
-    ):
-        return (
-            IntentType.TEAM_MISSING_CHECKOUT
-        )
+    intent_keyword_map = (
+        (
+            IntentType.TEAM_MISSING_CHECKOUT,
+            TEAM_MISSING_CHECKOUT_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_ATTENDANCE,
+            TEAM_ATTENDANCE_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_PRESENT,
+            TEAM_PRESENT_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_ABSENT,
+            TEAM_ABSENT_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_LEAVE,
+            TEAM_LEAVE_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_WFH,
+            TEAM_WFH_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_LATE,
+            TEAM_LATE_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_SHIFT,
+            TEAM_SHIFT_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_COUNT,
+            TEAM_COUNT_KEYWORDS,
+        ),
+        (
+            IntentType.TEAM_MEMBERS,
+            TEAM_MEMBERS_KEYWORDS,
+        ),
+        (
+            IntentType.REMAINING_HOURS,
+            REMAINING_HOURS_KEYWORDS,
+        ),
+        (
+            IntentType.POLICY,
+            POLICY_KEYWORDS,
+        ),
+        (
+            IntentType.LEAVE_BALANCE,
+            PERSONAL_LEAVE_KEYWORDS,
+        ),
+        (
+            IntentType.ATTENDANCE,
+            ATTENDANCE_KEYWORDS,
+        ),
+        (
+            IntentType.SHIFT,
+            SHIFT_KEYWORDS,
+        ),
+    )
+    PERSONAL_LEAVE_KEYWORDS.update(
+    {
+        "how many casual leaves do i have left",
+        "casual leaves do i have",
+    }
+)
+
+    for intent, keywords in intent_keyword_map:
+        if any(
+            keyword in normalized_question
+            for keyword in keywords
+        ):
+            return intent
 
     if any(
-        phrase in normalized_question
-        for phrase in TEAM_ATTENDANCE_KEYWORDS
+        keyword in normalized_question
+        for keyword in DATABASE_KEYWORDS
     ):
-        return IntentType.TEAM_ATTENDANCE
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_PRESENT_KEYWORDS
-    ):
-        return IntentType.TEAM_PRESENT
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_ABSENT_KEYWORDS
-    ):
-        return IntentType.TEAM_ABSENT
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_LEAVE_KEYWORDS
-    ):
-        return IntentType.TEAM_LEAVE
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_WFH_KEYWORDS
-    ):
-        return IntentType.TEAM_WFH
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_LATE_KEYWORDS
-    ):
-        return IntentType.TEAM_LATE
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_SHIFT_KEYWORDS
-    ):
-        return IntentType.TEAM_SHIFT
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_COUNT_KEYWORDS
-    ):
-        return IntentType.TEAM_COUNT
-
-    if any(
-        phrase in normalized_question
-        for phrase in TEAM_MEMBERS_KEYWORDS
-    ):
-        return IntentType.TEAM_MEMBERS
-
-    if any(
-        phrase in normalized_question
-        for phrase in REMAINING_HOURS_KEYWORDS
-    ):
-        return IntentType.REMAINING_HOURS
-
-    if any(
-        phrase in normalized_question
-        for phrase in PERSONAL_LEAVE_KEYWORDS
-    ):
-        return IntentType.LEAVE_BALANCE
-
-    if any(
-        phrase in normalized_question
-        for phrase in ATTENDANCE_KEYWORDS
-    ):
-        return IntentType.ATTENDANCE
-
-    if any(
-        phrase in normalized_question
-        for phrase in SHIFT_KEYWORDS
-    ):
-        return IntentType.SHIFT
-
-    if any(
-        phrase in normalized_question
-        for phrase in POLICY_KEYWORDS
-    ):
-        return IntentType.POLICY
+        return IntentType.DATABASE_QUERY
 
     return IntentType.GENERAL

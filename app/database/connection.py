@@ -23,13 +23,13 @@ if settings.db_host == "sqlite" or settings.db_name.endswith(".db"):
     }
 else:
     database_url = URL.create(
-        drivername="mysql+pymysql",
-        username=settings.db_user,
-        password=settings.db_password,
-        host=settings.db_host,
-        port=settings.db_port,
-        database=settings.db_name,
-        query={"charset": "utf8mb4"},
+    drivername="mysql+pymysql",
+    username=settings.db_user,
+    password=settings.db_password,
+    host=settings.db_host,
+    port=settings.db_port,
+    database=settings.db_name,
+    query={"charset": "utf8mb4"},
     )
     engine_options: dict[str, Any] = {
         "echo": False,

@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.agents.intent_classifier import (
@@ -27,13 +28,59 @@ from app.tools.manager_tools import (
     get_my_team_present_count,
     get_my_team_shift_summary,
 )
+from app.tools.read_only_sql_tool import (
+    read_only_sql_tool,
+)
 
 
 class EmployeeChatWorkflow:
     def __init__(self) -> None:
-        self.response_generator = (
-            PolicyResponseGenerator()
+        self.response_generator = PolicyResponseGenerator()
+
+    def _is_database_manager(
+        self,
+        db: Session,
+        employee_id: int,
+    ) -> bool:
+        statement = text(
+            """
+            SELECT 1
+            FROM employee_manager_map
+            WHERE manager_id = :employee_id
+            LIMIT 1
+            """
         )
+
+        result = db.execute(
+            statement,
+            {
+                "employee_id": employee_id,
+            },
+        ).scalar()
+
+        return result is not None
+
+    def _run_sql_fallback(
+        self,
+        db: Session,
+        current_employee: Employee,
+        question: str,
+        intent: IntentType,
+    ) -> dict:
+        result = read_only_sql_tool.run(
+            db=db,
+            question=question,
+            employee=current_employee,
+        )
+
+        return {
+            "answer": result.get(
+                "answer",
+                "I could not retrieve the requested data.",
+            ),
+            "intent": intent.value,
+            "sources": [],
+        }
 
     def run(
         self,
@@ -56,6 +103,10 @@ class EmployeeChatWorkflow:
             IntentType.TEAM_SHIFT,
         }
 
+        employee_role = (
+            current_employee.role or "employee"
+        ).lower()
+
         if intent == IntentType.UNAUTHORIZED:
             return {
                 "answer": (
@@ -66,15 +117,45 @@ class EmployeeChatWorkflow:
                 "sources": [],
             }
 
+        is_database_manager = self._is_database_manager(
+            db=db,
+            employee_id=current_employee.id,
+        )
+
+        has_team_access = (
+            employee_role
+            in {
+                "manager",
+                "hr",
+                "admin",
+            }
+            or is_database_manager
+        )
+
         if (
             intent in manager_intents
-            and current_employee.role.lower()
-            not in {"manager", "hr", "admin"}
+            and not has_team_access
         ):
             return {
                 "answer": (
                     "You are not authorized to access "
                     "team-level employee information."
+                ),
+                "intent": intent.value,
+                "sources": [],
+            }
+
+        if intent == IntentType.DATABASE_QUERY:
+            result = read_only_sql_tool.run(
+                db=db,
+                question=question,
+                employee=current_employee,
+            )
+
+            return {
+                "answer": result.get(
+                    "answer",
+                    "I could not retrieve the requested data.",
                 ),
                 "intent": intent.value,
                 "sources": [],
@@ -87,13 +168,15 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
-            else:
-                answer = result["message"]
-                
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
 
             return {
-                "answer": answer,
+                "answer": result["message"],
                 "intent": intent.value,
                 "sources": [],
             }
@@ -105,24 +188,32 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             else:
                 check_in = (
-                    result["check_in"]
+                    result.get("check_in")
                     or "not recorded"
                 )
                 check_out = (
-                    result["check_out"]
+                    result.get("check_out")
                     or "not recorded"
+                )
+                worked_hours = result.get(
+                    "worked_hours",
+                    0,
                 )
 
                 answer = (
                     f"Your attendance status today is "
-                    f"{result['status']}. "
+                    f"{result.get('status', 'unknown')}. "
                     f"Check-in: {check_in}. "
                     f"Check-out: {check_out}. "
-                    f"Worked hours: "
-                    f"{result['worked_hours']}."
+                    f"Worked hours: {worked_hours}."
                 )
 
             return {
@@ -137,10 +228,16 @@ class EmployeeChatWorkflow:
                 current_employee=current_employee,
             )
 
-            answer = result["message"]
+            if not result["success"]:
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
 
             return {
-                "answer": answer,
+                "answer": result["message"],
                 "intent": intent.value,
                 "sources": [],
             }
@@ -152,7 +249,12 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             else:
                 answer = (
                     f"You have worked "
@@ -175,7 +277,12 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             else:
                 answer = (
                     f"You currently have "
@@ -196,7 +303,12 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif not result["employees"]:
                 answer = (
                     "You currently have no active "
@@ -226,11 +338,15 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif not result["employees"]:
                 answer = (
-                    "No employees currently report "
-                    "to you."
+                    "No employees currently report to you."
                 )
             else:
                 attendance_lines = [
@@ -259,11 +375,18 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             else:
+                employees = result.get("employees", [])
+
                 names = ", ".join(
                     employee["name"]
-                    for employee in result["employees"]
+                    for employee in employees
                 )
 
                 answer = (
@@ -288,11 +411,18 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             else:
+                employees = result.get("employees", [])
+
                 names = ", ".join(
                     employee["name"]
-                    for employee in result["employees"]
+                    for employee in employees
                 )
 
                 answer = (
@@ -318,7 +448,12 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif result["count"] == 0:
                 answer = (
                     "No team members are on leave today."
@@ -379,7 +514,12 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif result["count"] == 0:
                 answer = (
                     "No team members have been recorded "
@@ -405,17 +545,19 @@ class EmployeeChatWorkflow:
                 "sources": [],
             }
 
-        if (
-            intent
-            == IntentType.TEAM_MISSING_CHECKOUT
-        ):
+        if intent == IntentType.TEAM_MISSING_CHECKOUT:
             result = get_my_team_missing_checkouts(
                 db=db,
                 current_employee=current_employee,
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif result["count"] == 0:
                 answer = (
                     "No team members currently have "
@@ -445,17 +587,20 @@ class EmployeeChatWorkflow:
             )
 
             if not result["success"]:
-                answer = result["message"]
+                return self._run_sql_fallback(
+                    db=db,
+                    current_employee=current_employee,
+                    question=question,
+                    intent=intent,
+                )
             elif result["team_count"] == 0:
                 answer = (
-                    "No employees currently report "
-                    "to you."
+                    "No employees currently report to you."
                 )
             else:
                 distribution = ", ".join(
                     f"{shift}: {count}"
-                    for shift, count
-                    in result[
+                    for shift, count in result[
                         "shift_distribution"
                     ].items()
                 )
@@ -477,49 +622,59 @@ class EmployeeChatWorkflow:
                     f"Hello {current_employee.name}. "
                     "You can ask about company policies, "
                     "your leave balance, attendance, shift, "
-                    "remaining work hours, or team details "
-                    "if you are a manager."
+                    "remaining work hours, database records, "
+                    "or team details if you are a manager."
                 ),
                 "intent": intent.value,
                 "sources": [],
             }
 
-        context, results = build_policy_context(
-            question=question,
-            limit=4,
-        )
-
-        answer = self.response_generator.generate(
-            employee_name=current_employee.name,
-            question=question,
-            policy_context=context,
-        )
-
-        sources = []
-        seen_sources: set[
-            tuple[str, int | None]
-        ] = set()
-
-        for result in results:
-            source_key = (
-                result.source,
-                result.page,
+        if intent == IntentType.POLICY:
+            context, results = build_policy_context(
+                question=question,
+                limit=4,
             )
 
-            if source_key in seen_sources:
-                continue
-
-            seen_sources.add(source_key)
-
-            sources.append(
-                {
-                    "source": result.source,
-                    "page": result.page,
-                }
+            answer = self.response_generator.generate(
+                employee_name=current_employee.name,
+                question=question,
+                policy_context=context,
             )
+
+            sources = []
+            seen_sources: set[
+                tuple[str, int | None]
+            ] = set()
+
+            for result in results:
+                source_key = (
+                    result.source,
+                    result.page,
+                )
+
+                if source_key in seen_sources:
+                    continue
+
+                seen_sources.add(source_key)
+
+                sources.append(
+                    {
+                        "source": result.source,
+                        "page": result.page,
+                    }
+                )
+
+            return {
+                "answer": answer,
+                "intent": intent.value,
+                "sources": sources,
+            }
 
         return {
-            "answer": answer,
-            "intent": intent.value,
-            "sources": sources,
+            "answer": (
+                "I could not understand your request. "
+                "Please try asking it differently."
+            ),
+            "intent": IntentType.GENERAL.value,
+            "sources": [],
         }
