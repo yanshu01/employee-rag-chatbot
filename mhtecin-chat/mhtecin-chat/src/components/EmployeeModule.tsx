@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { employeeService, LeaveBalanceResponse, ShiftTimingResponse, RemainingHoursResponse } from "@/services/employeeService";
 import { policyService, PolicySearchResponse } from "@/services/policyService";
+import { websocketService } from "@/services/api/websocketService";
 import { useAuth } from "@/hooks/useAuth";
-import { Calendar, Clock, User, Search, FileText, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Calendar, Clock, User, Search, FileText, Loader2, AlertCircle, RefreshCw, Zap } from "lucide-react";
 
 export const EmployeeModule: React.FC = () => {
   const { user } = useAuth();
@@ -10,6 +11,7 @@ export const EmployeeModule: React.FC = () => {
   const [shift, setShift] = useState<ShiftTimingResponse | null>(null);
   const [remaining, setRemaining] = useState<RemainingHoursResponse | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [liveSyncFlash, setLiveSyncFlash] = useState(false);
 
   // Policy Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -37,6 +39,26 @@ export const EmployeeModule: React.FC = () => {
 
   useEffect(() => {
     fetchStats();
+
+    // Register Real-Time WebSocket Subscribers
+    const handleWsUpdate = (data: any) => {
+      console.log("⚡ Employee Module Live Event Triggered:", data);
+      setLiveSyncFlash(true);
+      setTimeout(() => setLiveSyncFlash(false), 2000);
+      fetchStats();
+    };
+
+    websocketService.subscribe("leave_updated", handleWsUpdate);
+    websocketService.subscribe("shift_updated", handleWsUpdate);
+    websocketService.subscribe("profile_updated", handleWsUpdate);
+    websocketService.subscribe("remaining_hours_updated", handleWsUpdate);
+
+    return () => {
+      websocketService.unsubscribe("leave_updated", handleWsUpdate);
+      websocketService.unsubscribe("shift_updated", handleWsUpdate);
+      websocketService.unsubscribe("profile_updated", handleWsUpdate);
+      websocketService.unsubscribe("remaining_hours_updated", handleWsUpdate);
+    };
   }, []);
 
   const handlePolicySearch = async (e: React.FormEvent) => {
@@ -56,10 +78,17 @@ export const EmployeeModule: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header & Refresh */}
+      {/* Header & Live Indicator */}
       <div className="flex justify-between items-center border-b border-border pb-4">
         <div>
-          <h2 className="text-base font-bold text-foreground">Employee Portal</h2>
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            Employee Portal
+            {liveSyncFlash && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 flex items-center gap-1 animate-bounce">
+                <Zap className="h-3 w-3" /> Live Data Syncing...
+              </span>
+            )}
+          </h2>
           <p className="text-xs text-muted-foreground">View your active shift, leave balances, and company policies</p>
         </div>
         <button
@@ -74,7 +103,7 @@ export const EmployeeModule: React.FC = () => {
       {/* Grid of Key Employee Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 1. Leave Balance */}
-        <div className="p-5 border border-border rounded-xl bg-card shadow-sm space-y-3">
+        <div className={`p-5 border rounded-xl bg-card shadow-sm space-y-3 transition-all duration-500 ${liveSyncFlash ? "border-emerald-500 ring-2 ring-emerald-500/20" : "border-border"}`}>
           <div className="flex justify-between items-start">
             <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-500">
               <Calendar className="h-5 w-5" />
@@ -100,7 +129,7 @@ export const EmployeeModule: React.FC = () => {
         </div>
 
         {/* 2. Shift Timing */}
-        <div className="p-5 border border-border rounded-xl bg-card shadow-sm space-y-3">
+        <div className={`p-5 border rounded-xl bg-card shadow-sm space-y-3 transition-all duration-500 ${liveSyncFlash ? "border-blue-500 ring-2 ring-blue-500/20" : "border-border"}`}>
           <div className="flex justify-between items-start">
             <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-500">
               <Clock className="h-5 w-5" />
@@ -127,7 +156,7 @@ export const EmployeeModule: React.FC = () => {
         </div>
 
         {/* 3. Remaining Hours */}
-        <div className="p-5 border border-border rounded-xl bg-card shadow-sm space-y-3">
+        <div className={`p-5 border rounded-xl bg-card shadow-sm space-y-3 transition-all duration-500 ${liveSyncFlash ? "border-purple-500 ring-2 ring-purple-500/20" : "border-border"}`}>
           <div className="flex justify-between items-start">
             <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-500">
               <User className="h-5 w-5" />

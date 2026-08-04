@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { WebSocketProvider, useWebSocket } from "@/context/WebSocketContext";
 import { RAGChatbot } from "@/components/RAGChatbot";
 import { EmployeeModule } from "@/components/EmployeeModule";
 import { ManagerModule } from "@/components/ManagerModule";
@@ -17,10 +18,13 @@ import {
   Key,
   Loader2,
   AlertCircle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 function MainLayout() {
   const { user, logout, isAuthenticated, isManager, login } = useAuth();
+  const { isConnected } = useWebSocket();
   const [activeTab, setActiveTab] = useState("chat");
 
   // Login form state
@@ -154,8 +158,16 @@ function MainLayout() {
             <div>
               <h1 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                 Internal Employee AI Assistant
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
-                  RAG Enterprise
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center gap-1">
+                  {isConnected ? (
+                    <>
+                      <Wifi className="h-3 w-3 text-emerald-500 animate-pulse" /> Live WS Sync
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3 text-amber-500" /> Sync Standby
+                    </>
+                  )}
                 </span>
               </h1>
               <p className="text-[11px] text-slate-500">Connected to FastAPI Backend & Vector DB</p>
@@ -231,7 +243,9 @@ function MainLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <MainLayout />
+      <WebSocketProvider>
+        <MainLayout />
+      </WebSocketProvider>
     </AuthProvider>
   );
 }

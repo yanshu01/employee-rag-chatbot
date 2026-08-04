@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { managerService, TeamMembersResponse, TeamLeaveSummaryResponse, TeamShiftSummaryResponse, EmployeeCreatePayload } from "@/services/managerService";
+import { websocketService } from "@/services/api/websocketService";
 import { useAuth } from "@/hooks/useAuth";
-import { Users, Calendar, Clock, UserPlus, RefreshCw, AlertCircle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Users, Calendar, Clock, UserPlus, RefreshCw, AlertCircle, CheckCircle2, ShieldAlert, Zap } from "lucide-react";
 
 export const ManagerModule: React.FC = () => {
   const { user, isManager, isAdmin, isHR } = useAuth();
@@ -9,6 +10,7 @@ export const ManagerModule: React.FC = () => {
   const [teamLeave, setTeamLeave] = useState<TeamLeaveSummaryResponse | null>(null);
   const [teamShifts, setTeamShifts] = useState<TeamShiftSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [liveSyncFlash, setLiveSyncFlash] = useState(false);
   const [activeTab, setActiveTab] = useState<"members" | "leave" | "shifts" | "register">("members");
 
   // Registration Form State
@@ -46,6 +48,24 @@ export const ManagerModule: React.FC = () => {
   useEffect(() => {
     if (isManager) {
       fetchManagerData();
+
+      // Register Real-Time WebSocket Subscribers for Manager
+      const handleTeamWsUpdate = (data: any) => {
+        console.log("⚡ Manager Module Live Team Event Triggered:", data);
+        setLiveSyncFlash(true);
+        setTimeout(() => setLiveSyncFlash(false), 2000);
+        fetchManagerData();
+      };
+
+      websocketService.subscribe("team_updated", handleTeamWsUpdate);
+      websocketService.subscribe("team_leave_updated", handleTeamWsUpdate);
+      websocketService.subscribe("team_shift_updated", handleTeamWsUpdate);
+
+      return () => {
+        websocketService.unsubscribe("team_updated", handleTeamWsUpdate);
+        websocketService.unsubscribe("team_leave_updated", handleTeamWsUpdate);
+        websocketService.unsubscribe("team_shift_updated", handleTeamWsUpdate);
+      };
     }
   }, [isManager]);
 
@@ -92,7 +112,14 @@ export const ManagerModule: React.FC = () => {
       {/* Header */}
       <div className="flex justify-between items-center border-b border-border pb-4">
         <div>
-          <h2 className="text-base font-bold text-foreground">Manager Dashboard</h2>
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            Manager Dashboard
+            {liveSyncFlash && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 flex items-center gap-1 animate-bounce">
+                <Zap className="h-3 w-3" /> Live Team Data Syncing...
+              </span>
+            )}
+          </h2>
           <p className="text-xs text-muted-foreground">Manage your direct reports, team leaves, and shift allocations</p>
         </div>
         <button
@@ -106,7 +133,7 @@ export const ManagerModule: React.FC = () => {
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-5 border border-border rounded-xl bg-card shadow-sm space-y-2">
+        <div className={`p-5 border rounded-xl bg-card shadow-sm space-y-2 transition-all duration-500 ${liveSyncFlash ? "border-primary ring-2 ring-primary/20" : "border-border"}`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Total Team Members</span>
             <Users className="h-4 w-4 text-primary" />
