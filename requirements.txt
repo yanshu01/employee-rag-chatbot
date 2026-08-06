@@ -32,3 +32,5 @@ pypdf
 pwdlib[argon2]
 argon2-cffi
 PyJWT==2.10.1
+langchain-google-genai
+google-genai

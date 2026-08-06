@@ -27,3 +27,15 @@ venv/
 # Chroma/Qdrant data (if applicable)
 chroma_db/
 data/.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local environment
+.env
+venv/
+.venv/
+
+# Generated vector database
+app/vector_db/

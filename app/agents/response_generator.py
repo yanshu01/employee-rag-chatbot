@@ -2,18 +2,18 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import settings
 
 
 class PolicyResponseGenerator:
     def __init__(self) -> None:
-        self.llm = ChatGroq(
-            api_key=settings.groq_api_key,
-            model=settings.groq_model,
-            temperature=0,
-        )
+        self.llm = ChatGoogleGenerativeAI(
+    model=settings.gemini_model,
+    google_api_key=settings.gemini_api_key,
+    
+)
 
     def generate(
         self,

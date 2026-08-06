@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
-    groq_api_key: str = "gsk_dummy_groq_api_key"
-    groq_model: str = "openai/gpt-oss-120b"
+    gemini_api_key: str
+    gemini_model: str = "gemini-3.6-flash"
 
     # Company API Authentication
     company_api_key: str

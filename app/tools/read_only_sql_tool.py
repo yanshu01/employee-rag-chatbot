@@ -2,7 +2,7 @@ import json
 import re
 from typing import Any
 
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -41,35 +41,87 @@ MAX_ROWS = 100
 
 class ReadOnlySQLTool:
     def __init__(self) -> None:
-        self.llm = ChatGroq(
-            api_key=settings.groq_api_key,
-            model="llama-3.3-70b-versatile",
-            temperature=0,
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
+            google_api_key=settings.gemini_api_key,
         )
 
-    def _clean_sql(self, sql: str) -> str:
-        cleaned = sql.strip()
+    def _extract_response_text(
+        self,
+        content: Any,
+    ) -> str:
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(content, list):
+            text_parts: list[str] = []
+
+            for item in content:
+                if isinstance(item, str):
+                    text_parts.append(item)
+
+                elif isinstance(item, dict):
+                    item_text = item.get("text")
+
+                    if isinstance(item_text, str):
+                        text_parts.append(item_text)
+
+            return "\n".join(text_parts).strip()
+
+        if isinstance(content, dict):
+            item_text = content.get("text")
+
+            if isinstance(item_text, str):
+                return item_text.strip()
+
+        return str(content).strip()
+
+    def _clean_sql(
+        self,
+        content: Any,
+    ) -> str:
+        cleaned = self._extract_response_text(
+            content
+        )
 
         cleaned = re.sub(
-            r"^```sql\s*",
+            r"```(?:sql)?",
             "",
             cleaned,
             flags=re.IGNORECASE,
         )
-        cleaned = re.sub(
-            r"^```\s*",
+
+        cleaned = cleaned.replace(
+            "```",
             "",
+        ).strip()
+
+        select_match = re.search(
+            r"\bSELECT\b[\s\S]*",
             cleaned,
-        )
-        cleaned = re.sub(
-            r"\s*```$",
-            "",
-            cleaned,
+            flags=re.IGNORECASE,
         )
 
-        return cleaned.strip()
+        if not select_match:
+            raise ValueError(
+                "Gemini did not return a valid SELECT query."
+            )
 
-    def _validate_sql(self, sql: str) -> None:
+        cleaned = select_match.group(0).strip()
+
+        cleaned = re.split(
+            r"\n(?:Explanation|Note|Result):",
+            cleaned,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+
+        return cleaned.rstrip(";").strip()
+
+    def _validate_sql(
+        self,
+        sql: str,
+    ) -> None:
         normalized = sql.strip().lower()
 
         if not normalized.startswith("select"):
@@ -92,21 +144,23 @@ class ReadOnlySQLTool:
             )
 
         for keyword in BLOCKED_KEYWORDS:
-            pattern = (
-                rf"\b{re.escape(keyword)}\b"
-            )
+            pattern = rf"\b{re.escape(keyword)}\b"
 
-            if re.search(pattern, normalized):
+            if re.search(
+                pattern,
+                normalized,
+            ):
                 raise ValueError(
                     f"Blocked SQL keyword: {keyword}"
                 )
 
         for column in SENSITIVE_COLUMNS:
-            pattern = (
-                rf"\b{re.escape(column)}\b"
-            )
+            pattern = rf"\b{re.escape(column)}\b"
 
-            if re.search(pattern, normalized):
+            if re.search(
+                pattern,
+                normalized,
+            ):
                 raise ValueError(
                     "Sensitive authentication fields "
                     "cannot be queried."
@@ -128,7 +182,10 @@ class ReadOnlySQLTool:
                 "System database access is not allowed."
             )
 
-    def _ensure_limit(self, sql: str) -> str:
+    def _ensure_limit(
+        self,
+        sql: str,
+    ) -> str:
         limit_match = re.search(
             r"\blimit\s+(\d+)\b",
             sql,
@@ -152,9 +209,7 @@ class ReadOnlySQLTool:
                 flags=re.IGNORECASE,
             )
 
-        return (
-            f"{cleaned_sql} LIMIT {MAX_ROWS}"
-        )
+        return f"{cleaned_sql} LIMIT {MAX_ROWS}"
 
     def _is_manager(
         self,
@@ -216,6 +271,14 @@ Rules:
 - Never trust employee IDs or employee codes mentioned by the user.
 - Never query secrets or authentication fields.
 - Maximum 100 rows.
+
+Critical output requirements:
+- Your response must begin with the word SELECT.
+- Return the SQL query only.
+- Do not write explanations.
+- Do not write "SQL:".
+- Do not use markdown or code fences.
+- Do not return JSON.
 """
 
     def _generate_sql(
@@ -232,8 +295,12 @@ Rules:
 
         response = self.llm.invoke(prompt)
 
+        print("\n=== GEMINI RAW SQL RESPONSE ===")
+        print(repr(response.content))
+        print("=== END RESPONSE ===\n")
+
         sql = self._clean_sql(
-            str(response.content)
+            response.content
         )
 
         self._validate_sql(sql)
@@ -255,6 +322,7 @@ Rules:
         is_manager: bool,
     ) -> None:
         normalized = sql.lower()
+
         employee_role = (
             employee.role or "employee"
         ).lower()
@@ -269,7 +337,10 @@ Rules:
             and ":employee_id" in normalized
         )
 
-        if employee_role in {"hr", "admin"}:
+        if employee_role in {
+            "hr",
+            "admin",
+        }:
             return
 
         if is_manager:
@@ -278,6 +349,7 @@ Rules:
                     "Manager queries must use "
                     "employee_manager_map filtering."
                 )
+
             return
 
         if not has_employee_placeholder:
@@ -320,9 +392,9 @@ Important rules:
 
         response = self.llm.invoke(prompt)
 
-        return str(
+        return self._extract_response_text(
             response.content
-        ).strip()
+        )
 
     def run(
         self,
@@ -342,15 +414,13 @@ Important rules:
                 is_manager=manager_status,
             )
 
-            print("\nGenerated SQL:")
+            print("\n=== CLEANED SQL ===")
             print(sql)
-            print()
+            print("=== END CLEANED SQL ===\n")
 
             parameters = {
                 "employee_id": employee.id,
-                "employee_code": (
-                    employee.employee_code
-                ),
+                "employee_code": employee.employee_code,
             }
 
             result = db.execute(
@@ -360,8 +430,7 @@ Important rules:
 
             rows = [
                 dict(row)
-                for row
-                in result.mappings().all()
+                for row in result.mappings().all()
             ]
 
             answer = self._format_answer(
@@ -381,9 +450,7 @@ Important rules:
                 "success": False,
                 "answer": str(exc),
                 "rows": [],
-                "intent": (
-                    "database_query_blocked"
-                ),
+                "intent": "database_query_blocked",
             }
 
         except Exception as exc:
@@ -399,9 +466,7 @@ Important rules:
                     "information from the database."
                 ),
                 "rows": [],
-                "intent": (
-                    "database_query_error"
-                ),
+                "intent": "database_query_error",
             }
 
 
