@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     groq_api_key: str = "gsk_dummy_groq_api_key"
     groq_model: str = "openai/gpt-oss-120b"
 
+    # Company API Authentication
+    company_api_key: str
+    company_api_key_header: str = "X-API-Key"
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",

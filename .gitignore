@@ -26,4 +26,4 @@ venv/
 
 # Chroma/Qdrant data (if applicable)
 chroma_db/
-data/
+data/.env
